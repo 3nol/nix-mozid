@@ -1,32 +1,29 @@
-#!/usr/bin/env bash
+set -euo pipefail
 
 # Display usage information
 display_usage() {
     cat <<USAGE
-Usage: mozid [options] <url>
+Usage: mozid [options] <base> <url>
 
 Description:
-  This script downloads a Firefox extension from the given URL, extracts it, and retrieves the extension ID from the manifest.json file.
+  This script downloads a program extension (given a program-specific base) from the given URL, extracts it, and retrieves the extension ID from the \`manifest.json\` file.
 
 Options:
   -v, --verbose
     Enable verbose output for debugging
 
-  --json
-    Output result in JSON format
-
   -h, --help
     Display this help message and exit
 
 Example:
-  mozid https://addons.mozilla.org/en-US/firefox/addon/vimium-ff/
+  mozid https://addons.mozilla.org/firefox/downloads/file https://addons.mozilla.org/en-US/firefox/addon/vimium-ff
 
 USAGE
 }
 
 # Initialize variables
 verbose=false
-json_output=false
+base_url=""
 extension_url=""
 
 # Parse arguments using a while loop
@@ -36,17 +33,16 @@ while [[ $# -gt 0 ]]; do
             verbose=true
             shift
             ;;
-        --json)
-            json_output=true
-            shift
-            ;;
         -h | --help)
             display_usage
             exit 0
             ;;
         *)
-            # Treat the first non-option argument as the URL
-            if [[ -z "$extension_url" ]]; then
+            # Treat the first two non-options as the URLs
+            if [[ -z "$base_url" ]]; then
+                base_url="$1"
+                shift
+            elif [[ -z "$extension_url" ]]; then
                 extension_url="$1"
                 shift
             else
@@ -58,14 +54,22 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check if the URL is provided
+# Check if the URLs are provided
+if [[ -z "$base_url" ]]; then
+    echo "error: no base url provided"
+    display_usage
+    exit 1
+fi
 if [[ -z "$extension_url" ]]; then
-    echo "error: no url provided"
+    echo "error: no extension url provided"
     display_usage
     exit 1
 fi
 
-# Ensure the URL has a trailing slash
+# Ensure the URLs have a trailing slash
+if [[ "${base_url: -1}" != "/" ]]; then
+    base_url="${base_url}/"
+fi
 if [[ "${extension_url: -1}" != "/" ]]; then
     extension_url="${extension_url}/"
 fi
@@ -88,12 +92,16 @@ fi
 say "status: using temporary directory '$TMP_DIR'"
 
 # Download the page and extract the .xpi URL
-say "status: fetching .xpi download link from '$extension_url'"
-XPI_URL=$(curl -s "$extension_url" | grep -oP '(?<=href=")https://addons.mozilla.org/firefox/downloads/file/[^"]+.xpi(?=")' | head -n 1)
+match_url="$(cut -d/ -f4- <<< "$base_url")"
+say "status: matching .xpi download link on '$match_url'"
+XPI_URL=$(curl -s "$extension_url" | grep -oP "(?<=href=\")$match_url[^\"]+.xpi(?=)" | grep -v "type:attachment" | head -n 1)
+say "status: found truncated url '$XPI_URL'"
 if [ -z "$XPI_URL" ]; then
     echo "error: failed to extract '.xpi' download link from the provided url"
     exit 1
 fi
+prefix_url="$(cut -d/ -f-3 <<< "$base_url")"
+XPI_URL="$prefix_url/$XPI_URL"
 say "status: downloading .xpi file from '$XPI_URL'"
 
 # Download the .xpi file
@@ -129,25 +137,7 @@ if [ -z "$ID" ]; then
 fi
 
 # Output results in the appropriate format
-if [[ "$json_output" = true ]]; then
-  EXTENSION_NAME=$(echo "$extension_url" | grep -oP '(?<=/addon/)[^/]+')
-  HOMEPAGE_URL=$(jq -r '.homepage_url // empty' "$MANIFEST_FILE")
-  AUTHOR=$(jq -r '.author // empty' "$MANIFEST_FILE")
-  VERSION=$(jq -r '.version // empty' "$MANIFEST_FILE")
-
-  cat <<EOF
-{
-  "name": "$EXTENSION_NAME",
-  "id": "$ID",
-  "version": "$VERSION",
-  "author": "$AUTHOR",
-  "url": "$extension_url",
-  "homepage_url": "$HOMEPAGE_URL"
-}
-EOF
-else
-  echo "$ID"
-fi
+echo "$ID"
 
 # The trap will automatically clean up the temporary directory
 say "info: cleaned up temporary files"
