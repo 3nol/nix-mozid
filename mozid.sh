@@ -6,7 +6,7 @@ display_usage() {
 Usage: mozid [options] <base> <url>
 
 Description:
-  This script downloads a program extension (given a program-specific base) from the given URL, extracts it, and retrieves the extension ID from the \`manifest.json\` file.
+  This script downloads a program extension (given a program-specific base) from the given URL, extracts it, and retrieves the extension ID from the 'manifest.json' file.
 
 Options:
   -v, --verbose
@@ -91,39 +91,42 @@ if [[ ! "$TMP_DIR" || ! -d "$TMP_DIR" ]]; then
 fi
 say "status: using temporary directory '$TMP_DIR'"
 
-# Download the page and extract the .xpi URL
-match_url="$(cut -d/ -f4- <<< "$base_url")"
-say "status: matching .xpi download link on '$match_url'"
-XPI_URL=$(curl -s "$extension_url" | grep -oP "(?<=href=\")$match_url[^\"]+.xpi(?=)" | grep -v "type:attachment" | head -n 1)
-say "status: found truncated url '$XPI_URL'"
-if [ -z "$XPI_URL" ]; then
-    echo "error: failed to extract '.xpi' download link from the provided url"
-    exit 1
-fi
-prefix_url="$(cut -d/ -f-3 <<< "$base_url")"
-XPI_URL="$prefix_url/$XPI_URL"
-say "status: downloading .xpi file from '$XPI_URL'"
+# Download the page and extract the '*.xpi' URL
+PREFIX_URL="$(cut -d/ -f-3 <<< "$base_url")"
+MATCH_URL="$(cut -d/ -f4- <<< "$base_url")"
+say "status: matching '*.xpi' download link on '$MATCH_URL'"
 
-# Download the .xpi file
+XPI_URL=$(curl -s "$extension_url" | \
+    grep -Po "(?<=href=\")[^\"]*${MATCH_URL}[^\"]+\.xpi(?!.*type:attachment)" | head -n 1)
+
+if [[ -z "$XPI_URL" ]]; then
+    echo "error: failed to extract '*.xpi' download link from the provided url"
+    exit 1
+elif [[ "$XPI_URL" != "$PREFIX_URL"* ]]; then
+    XPI_URL="$PREFIX_URL/$XPI_URL"
+fi
+say "status: downloading '*.xpi' file from '$XPI_URL'"
+
+# Download the '*.xpi' file
 XPI_FILE="$TMP_DIR/extension.xpi"
-if ! wget -q -O "$XPI_FILE" "$XPI_URL"; then
-    echo "error: failed to download '.xpi' file"
+if ! curl -sSL -o "$XPI_FILE" "$XPI_URL"; then
+    echo "error: failed to download '*.xpi' file"
     exit 1
 fi
-say "status: downloaded .xpi file '$XPI_FILE'"
+say "status: downloaded '*.xpi' file '$XPI_FILE'"
 
 # Extract the files
 EXTRACT_DIR="$TMP_DIR/extracted_xpi"
 mkdir -p "$EXTRACT_DIR"
 if ! unzip -q "$XPI_FILE" -d "$EXTRACT_DIR"; then
-    echo "error: failed to extract '.xpi' file"
+    echo "error: failed to extract '*.xpi' file"
     exit 1
 fi
-say "status: extracted .xpi file to '$EXTRACT_DIR'"
+say "status: extracted '*.xpi' file to '$EXTRACT_DIR'"
 
 # Check if manifest.json exists
 MANIFEST_FILE="$EXTRACT_DIR/manifest.json"
-if [ ! -f "$MANIFEST_FILE" ]; then
+if [[ ! -f "$MANIFEST_FILE" ]]; then
     echo "error: 'manifest.json' not found in the extracted files"
     exit 1
 fi
@@ -131,13 +134,15 @@ say "status: found 'manifest.json' file"
 
 # Extract the ID
 ID=$(grep -Po '(?<="id": ")[^"]+' "$MANIFEST_FILE")
-if [ -z "$ID" ]; then
+if [[ -z "$ID" ]]; then
     echo "error: id not found in the 'manifest.json' file"
     exit 1
 fi
 
 # Output results in the appropriate format
+if [[ -d "$TMP_DIR" && "$TMP_DIR" == "$(dirname $(mktemp -u))"* ]]; then
+    rm -r "$TMP_DIR"
+    say "status: removed temporary directory '$TMP_DIR'"
+fi
 echo "$ID"
-
-# The trap will automatically clean up the temporary directory
-say "info: cleaned up temporary files"
+exit 0
