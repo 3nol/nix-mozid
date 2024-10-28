@@ -1,5 +1,5 @@
 {
-  description = "Nix functions for retrieving Mozilla add-on IDs.";
+  description = "Nix tools for retrieving Mozilla add-on IDs.";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
