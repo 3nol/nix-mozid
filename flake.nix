@@ -21,9 +21,7 @@
         mozid-dependencies = with pkgs; [
           curl
           gnugrep
-          jq
           unzip
-          wget
         ];
         mozid-script = pkgs.writeShellScriptBin mozid-name (builtins.readFile ./mozid.sh);
 
