@@ -23,37 +23,54 @@
           gnugrep
           unzip
         ];
-        mozid-script = pkgs.writeShellScriptBin mozid-name (builtins.readFile ./mozid.sh);
-
-        firefox-base = "https://addons.mozilla.org/firefox/downloads/file";
-        thunderbird-base = "https://addons.thunderbird.net/thunderbird/downloads/latest";
-      in
-      rec {
-        defaultPackage = packages.mozid;
-        packages.mozid = pkgs.symlinkJoin {
+        mozid-package = pkgs.symlinkJoin {
           name = mozid-name;
-          paths = [ mozid-script ] ++ mozid-dependencies;
+          paths = [
+            (pkgs.writeShellScriptBin mozid-name (builtins.readFile ./mozid.sh))
+          ] ++ mozid-dependencies;
           buildInputs = [ pkgs.makeWrapper ];
           postBuild = "wrapProgram $out/bin/${mozid-name} --prefix PATH : $out/bin";
         };
-
-        lib =
+        mozid-wrapper =
+          name: arg:
           let
-            mozid =
-              base: extension:
-              ''${pkgs.runCommand "lib${mozid-name}" {
-                buildInputs = mozid-dependencies;
-                env = {
-                  inherit base extension;
-                };
-              } "${mozid-script}/bin/${mozid-name} @$base @$extension > $out"}'';
+            mozid-name-name = "${mozid-name}-${name}";
           in
-          {
-            inherit mozid;
-            mozid-firefox = mozid firefox-base;
-            mozid-thunderbird = mozid thunderbird-base;
-          };
+          builtins.toString (
+            pkgs.writeShellScriptBin mozid-name-name ''
+              ${mozid-package}/bin/${mozid-name} ${arg} $@
+            ''
+          )
+          + "/bin/"
+          + mozid-name-name;
+      in
+      {
+        # Publish script with dependencies as package.
+        packages.mozid = mozid-package;
 
+        # For every default '$base_url' created a wrapped derivation as app.
+        apps = {
+          mozid-firefox = {
+            type = "app";
+            program = mozid-wrapper "firefox" "https://addons.mozilla.org/firefox/downloads/file";
+          };
+          mozid-thunderbird = {
+            type = "app";
+            program = mozid-wrapper "thunderbird" "https://addons.thunderbird.net/thunderbird/downloads/latest";
+          };
+        };
+
+        # Just for fun, made it into a non-functional library function (because of sandbox).
+        lib.mozid =
+          base: extension:
+          builtins.readFile ''${pkgs.runCommand "lib${mozid-name}" {
+            buildInputs = mozid-dependencies;
+            env = {
+              inherit base extension;
+            };
+          } "echo -n `${mozid-package}/bin/${mozid-name} @$base @$extension` > $out"}'';
+
+        # For developing the 'mozid.sh' script.
         devShells.default = pkgs.mkShell { buildInputs = mozid-dependencies; };
       }
     );
