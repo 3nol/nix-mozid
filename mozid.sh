@@ -66,10 +66,12 @@ if [[ -z "$extension_url" ]]; then
     exit 1
 fi
 
-# Ensure the URLs have a trailing slash
+# Ensure the URLs do not have query params but trailing slash
+base_url=$(cut -d\? -f1 <<< "${base_url}")
 if [[ "${base_url: -1}" != "/" ]]; then
     base_url="${base_url}/"
 fi
+extension_url=$(cut -d\? -f1 <<< "${extension_url}")
 if [[ "${extension_url: -1}" != "/" ]]; then
     extension_url="${extension_url}/"
 fi
@@ -81,10 +83,8 @@ say() {
     fi
 }
 
-# Create a temporary directory and set trap for cleanup
+# Create a temporary directory
 TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"' EXIT SIGINT
-
 if [[ ! "$TMP_DIR" || ! -d "$TMP_DIR" ]]; then
     echo "error: failed to create a temporary directory"
     exit 1
